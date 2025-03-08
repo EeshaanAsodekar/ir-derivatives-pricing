@@ -1,17 +1,14 @@
 # src/analysis/vasicek_analysis.py
 
+import sys
+from pathlib import Path
+# Add the project root to sys.path
+sys.path.append(str(Path(__file__).resolve().parents[2]))
+
 from src.models.vasicek import simulate_vasicek
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-import sys
-import os
-
-# Get the absolute path of the project root
-project_root = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../.."))
-# Add the project root to sys.path
-sys.path.append(project_root)
 
 
 def analyze_parameter_sensitivity():
@@ -132,6 +129,6 @@ def plot_variance_convergence():
 
 
 if __name__ == "__main__":
-    # analyze_parameter_sensitivity()
+    analyze_parameter_sensitivity()
     plot_convergence_to_mean()
     plot_variance_convergence()
