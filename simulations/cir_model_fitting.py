@@ -4,11 +4,11 @@ import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 import sys
 from pathlib import Path
-# Add the project root to sys.path
-sys.path.append(str(Path(__file__).resolve().parents[1]))
-from src.models.cir import simulate_cir
-from simulations.cir_simulation import compute_zero_coupon_bond_prices
 
+# Ensure we can import from our project
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from src.models.cir import simulate_cir
 
 # === Market Data ===
 market_bond_prices = {
@@ -18,96 +18,121 @@ market_bond_prices = {
     "1Y": 0.9562
 }
 
+# Convert from e.g. "1M" → 1/12 years
 maturity_map = {"1M": 1/12, "3M": 3/12, "6M": 6/12, "1Y": 1.0}
 market_maturities = np.array([maturity_map[m] for m in market_bond_prices.keys()])
 market_prices = np.array(list(market_bond_prices.values()))
 
 # === Initial Guess & Model Params ===
 initial_guess = [0.05, 0.04, 0.08]  # (a, b, sigma)
-r0 = 0.052  # Short-term forward rate
+r0 = 0.052  # Short rate at t=0
 num_paths = 10000
-dt = 0.001
+dt = 0.01   # Use a slightly larger dt for stability
 
-# === Objective Function ===
+# === Constraints ===
+# We'll ensure: a > 0, b > 0, sigma > 0, sigma < 0.3
+def constraint_a(params):
+    a, _, _ = params
+    return a  # Must be > 0
+
+def constraint_b(params):
+    _, b, _ = params
+    return b  # Must be > 0
+
+def constraint_sigma_positive(params):
+    _, _, sigma = params
+    return sigma  # Must be > 0
+
+def constraint_sigma_upper(params):
+    _, _, sigma = params
+    return 0.3 - sigma  # Must be >= 0
+
+def constraint_b_upper(params):
+    _, b, _ = params
+    return 0.07 - b  # Must be >= 0
+
+
+constraints = [
+    {'type': 'ineq', 'fun': constraint_a},            # a > 0
+    {'type': 'ineq', 'fun': constraint_b},            # b > 0
+    {'type': 'ineq', 'fun': constraint_sigma_positive}, # sigma > 0
+    {'type': 'ineq', 'fun': constraint_sigma_upper},   # sigma < 0.3
+    {'type': 'ineq', 'fun': constraint_b_upper}   # b < 0.07
+]
+
+# === Objective Function (log-price SSE) ===
 def objective_function(params):
     """
-    Computes the SSE between market bond prices and simulated bond prices
-    at the exact market maturities. 
+    Computes sum of squared errors on log bond prices:
+        SSE = sum( [ log(P_sim(t_i)) - log(P_mkt(t_i)) ]^2 ).
     """
     a, b, sigma = params
-    T = max(market_maturities)  # 1 year in this case
+    T = max(market_maturities)  # 1 year
 
-    # Simulate short-rate process
+    # Simulate the short-rate process with Euler-Maruyama
     rates_df = simulate_cir(a, b, sigma, r0, T, dt, num_paths)
 
-    # Compute bond price for each market maturity
-    simulated_bond_prices = {}
-    for m in market_maturities:
+    # Compute the simulated bond price for each market maturity
+    simulated_prices = []
+    for key in market_bond_prices.keys():
+        m = maturity_map[key]
         num_steps = int(m / dt)
+        # Approximate integral
         integral_rt = rates_df.iloc[:num_steps].sum(axis=0) * dt
+        # Discount factor
         P_t = np.exp(-integral_rt).mean()
-        key = f"{int(round(m * 12))}M" if m < 1 else "1Y"
-        simulated_bond_prices[key] = P_t
+        simulated_prices.append(P_t)
 
-    # Gather simulated prices in the same order as market data
-    simulated_prices = np.array([simulated_bond_prices[k] for k in market_bond_prices.keys()])
+    simulated_prices = np.array(simulated_prices)
+    
+    # Convert to log prices & compute SSE
+    # Avoid log(0) by clipping
+    eps = 1e-12
+    log_sim = np.log(np.clip(simulated_prices, eps, 1.0))
+    log_mkt = np.log(np.clip(market_prices, eps, 1.0))
+    sse_log = np.sum((log_sim - log_mkt) ** 2)
+    return sse_log
 
-    # SSE in "per-100" scale (since data is 0.xx = fraction of par)
-    sse = np.sum((simulated_prices * 100 - market_prices * 100) ** 2)
-    return sse
+# === Perform Optimization (SLSQP) with constraints ===
+result = minimize(objective_function, 
+                  initial_guess, 
+                  method="SLSQP", 
+                  constraints=constraints,
+                  options={"maxiter": 500, "ftol": 1e-12})
 
-# === Compare Multiple Optimization Methods ===
-methods_to_try = ["Nelder-Mead", "BFGS", "Powell", "SLSQP"]
-results = {}
+a_opt, b_opt, sigma_opt = result.x
+print("Optimal Parameters (SLSQP, log-price SSE):")
+print(f"  a={a_opt:.6f}, b={b_opt:.6f}, sigma={sigma_opt:.6f}")
+print(f"  Final SSE (log-prices)={result.fun:.6f}")
 
-for method in methods_to_try:
-    result = minimize(objective_function, initial_guess, method=method)
-    sse = result.fun
-    a_opt, b_opt, sigma_opt = result.x
-
-    results[method] = {
-        "a": a_opt,
-        "b": b_opt,
-        "sigma": sigma_opt,
-        "SSE": sse
-    }
-
-# === Print Summary of Each Method ===
-for method, vals in results.items():
-    print(f"\nMethod: {method}")
-    print(f"  SSE: {vals['SSE']:.6f}")
-    print(f"  a={vals['a']:.6f}, b={vals['b']:.6f}, sigma={vals['sigma']:.6f}")
-
-# === Pick the Best (lowest SSE) Method & Plot ===
-best_method = min(results, key=lambda m: results[m]["SSE"])
-best_params = results[best_method]
-print(f"\nBest Method: {best_method} with SSE={best_params['SSE']:.6f}")
-
-# === Recompute Bond Prices for Plotting ===
+# === Plot the best-fit vs. market data
 def compute_bond_prices_at_market_maturities(a, b, sigma, r0, market_maturities, dt, num_paths):
+    # Resimulate the process
     rates_df = simulate_cir(a, b, sigma, r0, max(market_maturities), dt, num_paths)
+
     bond_prices = {}
-    for m in market_maturities:
+    for key in market_bond_prices.keys():
+        m = maturity_map[key]
         num_steps = int(m / dt)
         integral_rt = rates_df.iloc[:num_steps].sum(axis=0) * dt
         P_t = np.exp(-integral_rt).mean()
-        key = f"{int(round(m * 12))}M" if m < 1 else "1Y"
         bond_prices[key] = P_t
+
     return pd.DataFrame.from_dict(bond_prices, orient='index', columns=['Bond Price'])
 
-optimal_prices_df = compute_bond_prices_at_market_maturities(
-    best_params["a"], best_params["b"], best_params["sigma"],
-    r0, market_maturities, 0.01, 10000
-)
+optimal_prices_df = compute_bond_prices_at_market_maturities(a_opt, b_opt, sigma_opt, r0, market_maturities, dt, num_paths)
 
-# === Plot Market vs. Best-Fit CIR Model ===
+# Reorder rows to match the plotting order of maturities
+optimal_prices_df = optimal_prices_df.reindex(market_bond_prices.keys())
+
 plt.figure(figsize=(8, 5))
-plt.scatter(list(market_bond_prices.keys()), market_prices, color='red', label="Market Prices", zorder=2)
+plt.scatter(market_bond_prices.keys(), market_prices, color='red', label="Market Prices")
 plt.plot(optimal_prices_df.index, optimal_prices_df["Bond Price"], marker='o', linestyle='dashed',
-         label=f"Best-Fit CIR ({best_method})", zorder=1)
+         label=f"Best-Fit CIR (SLSQP)")
+
 plt.xlabel("Maturity")
 plt.ylabel("Zero-Coupon Bond Price")
-plt.title("CIR Model Calibration: Market vs. Simulated Bond Prices")
+plt.title("CIR Model Calibration (Log-Price SSE with Constraints)")
 plt.legend()
 plt.grid(True)
 plt.show()
