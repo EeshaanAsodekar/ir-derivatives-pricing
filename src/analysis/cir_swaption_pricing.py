@@ -326,13 +326,6 @@ def main():
     A = Delta * P_4M  # in a 1-payment swap, this is standard
     
     # ----------------------
-    # STEP (6): (Q3a) Price the ATM Swaption using the Black formula
-    #           If we treat the forward swap rate as lognormal with vol sigma_swap
-    # ----------------------
-    atm_swaption_price = black_atm_swaption_price(F_swap_sim, sigma_swap, A, T_swaption_expiry)
-    print(f"(3a) ATM Swaption Price (Black w/ CIR-avg vol) = {atm_swaption_price:.6f}")
-    
-    # ----------------------
     # STEP (7): (Q3b) Implied volatility for a put on the 4M zero-coupon bond
     #           a) We find the bond-put price from the CIR model
     #           b) Then invert Black-Scholes for that put to get implied vol
