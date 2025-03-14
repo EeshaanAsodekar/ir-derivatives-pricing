@@ -36,8 +36,8 @@ initial_guess = [0.05, 0.04, 0.08]  # (a, b, sigma)
 # (b) The initial short rate r(0).
 r0 = 0.052
 # (c) Monte Carlo settings.
-num_paths = 10000
-dt = 0.01
+num_paths = 1000
+dt = 0.0001
 
 # ------------------------------------------------------------------------------
 # CONSTRAINTS
@@ -59,6 +59,11 @@ def constraint_sigma_positive(params):
     _, _, sigma = params
     return sigma
 
+def constraint_a_upper(params):
+    """ Ensure a < 0.5 by having 0.5 - a >= 0. """
+    a, _, _ = params
+    return 0.5 - a
+
 def constraint_sigma_upper(params):
     """ Ensure sigma < 0.3 by having 0.3 - sigma >= 0. """
     _, _, sigma = params
@@ -74,6 +79,7 @@ constraints = [
     {'type': 'ineq', 'fun': constraint_b},             # b > 0
     {'type': 'ineq', 'fun': constraint_sigma_positive},# sigma > 0
     {'type': 'ineq', 'fun': constraint_sigma_upper},   # sigma < 0.3
+    {'type': 'ineq', 'fun': constraint_a_upper},        # a < 0.5
     {'type': 'ineq', 'fun': constraint_b_upper}        # b < 0.07
 ]
 
@@ -174,19 +180,73 @@ optimal_prices_df = compute_bond_prices_at_market_maturities(
 # Reorder rows to match the order we used in 'market_bond_prices'
 optimal_prices_df = optimal_prices_df.reindex(market_bond_prices.keys())
 
-# Plot: Market vs. Model
+### plotting
+x_market = [maturity_map[k] for k in market_bond_prices.keys()]  # Numeric x for market
+x_model = [maturity_map[k] for k in optimal_prices_df.index]     # Numeric x for model
+
 plt.figure(figsize=(8, 5))
-plt.scatter(market_bond_prices.keys(), market_prices, color='red', label="Market Prices")
-plt.plot(
-    optimal_prices_df.index,
-    optimal_prices_df["Bond Price"],
-    marker='o',
-    linestyle='dashed',
-    label="Best-Fit CIR (SLSQP)"
-)
-plt.xlabel("Maturity")
+
+# Plot only market points at proportional x-coordinates
+plt.scatter(x_market, market_prices, color='red', label="Market Prices")
+
+# Plot only model points (without connecting line)
+plt.scatter(x_model, optimal_prices_df["Bond Price"], color='blue', marker='o', label="Best-Fit CIR (SLSQP)")
+
+plt.xlabel("Maturity (Years)")
 plt.ylabel("Zero-Coupon Bond Price")
 plt.title("CIR Model Calibration (Log-Price SSE with Constraints)")
+
+# Use numeric x-values but label them with the original tenor strings
+plt.xticks(x_market, market_bond_prices.keys())
+
 plt.legend()
 plt.grid(True)
 plt.show()
+
+
+
+def plot_optimized_cir_rate_curve(a, b, sigma, r0, dt, num_paths, T_max=5):
+    """
+    Plots the yield curve (annualized zero-coupon yields) for the optimized CIR parameters
+    from dt (to avoid division by zero) up to T_max years.
+    
+    The yield is computed as:
+        y(T) = -ln(P(T)) / T,
+    where P(T) is the simulated zero-coupon bond price for maturity T.
+    
+    Parameters:
+      a, b, sigma : Optimized CIR parameters.
+      r0          : Initial short rate.
+      dt          : Time step for simulation.
+      num_paths   : Number of Monte Carlo simulation paths.
+      T_max       : Maximum maturity (in years) for the curve (default is 5).
+    """
+    # Create a grid of maturities (avoid T=0 to prevent division by zero)
+    # maturities = np.linspace(dt, T_max, 200)
+    maturities = np.linspace(dt, T_max, 60)
+    
+    # Simulate short-rate paths once up to T_max
+    rates_df = simulate_cir(a, b, sigma, r0, T_max, dt, num_paths)
+    
+    # Compute the yield curve
+    yields = []
+    for T in maturities:
+        num_steps = max(1, int(T / dt))
+        # Integrate short rates along the paths up to maturity T
+        integral_rt = rates_df.iloc[:num_steps].sum(axis=0) * dt
+        # Zero-coupon bond price: average over paths
+        price = np.exp(-integral_rt).mean()
+        # Annualized yield: y(T) = -ln(P(T)) / T
+        yields.append(-np.log(price) / T)
+    
+    # Plot the yield curve
+    plt.figure(figsize=(8, 5))
+    plt.plot(maturities, yields, marker='o', label="Optimized CIR Yield Curve")
+    plt.xlabel("Maturity (Years)")
+    plt.ylabel("Yield (Annualized)")
+    plt.title(f"CIR Model Yield Curve for a={a:.5f} b={b:.5f} sigma={sigma:.5f}")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+plot_optimized_cir_rate_curve(a_opt, b_opt, sigma_opt, r0, dt, num_paths, T_max=5)
