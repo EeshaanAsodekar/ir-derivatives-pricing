@@ -8,7 +8,7 @@ from pathlib import Path
 # 1. Make sure Python can find our 'simulate_cir' function.
 #    (Adjust the path if your project structure is different.)
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-
+from simulations.cir_simulation import compute_zero_coupon_bond_prices
 from src.models.cir import simulate_cir
 
 # ------------------------------------------------------------------------------
@@ -205,48 +205,33 @@ plt.show()
 
 
 
-def plot_optimized_cir_rate_curve(a, b, sigma, r0, dt, num_paths, T_max=5):
+def plot_zero_coupon_bond_prices_for_params(a, b, sigma, r0=0.05, T=5, dt=0.01, 
+                                            num_paths=10000, max_maturity=5):
     """
-    Plots the yield curve (annualized zero-coupon yields) for the optimized CIR parameters
-    from dt (to avoid division by zero) up to T_max years.
-    
-    The yield is computed as:
-        y(T) = -ln(P(T)) / T,
-    where P(T) is the simulated zero-coupon bond price for maturity T.
-    
-    Parameters:
-      a, b, sigma : Optimized CIR parameters.
-      r0          : Initial short rate.
-      dt          : Time step for simulation.
-      num_paths   : Number of Monte Carlo simulation paths.
-      T_max       : Maximum maturity (in years) for the curve (default is 5).
+    Plots zero-coupon bond prices for a single (a, b, sigma) parameter set.
+
+    Args:
+        a (float): Speed of mean reversion.
+        b (float): Long-run mean interest rate.
+        sigma (float): Volatility.
+        r0 (float): Initial short rate.
+        T (float): Total simulation time in years.
+        dt (float): Time step size.
+        num_paths (int): Number of simulation paths.
+        max_maturity (int): Maximum bond maturity in years.
     """
-    # Create a grid of maturities (avoid T=0 to prevent division by zero)
-    # maturities = np.linspace(dt, T_max, 200)
-    maturities = np.linspace(dt, T_max, 60)
+    bond_prices_df = compute_zero_coupon_bond_prices(a, b, sigma, r0, T, dt, 
+                                                     num_paths, max_maturity)
     
-    # Simulate short-rate paths once up to T_max
-    rates_df = simulate_cir(a, b, sigma, r0, T_max, dt, num_paths)
-    
-    # Compute the yield curve
-    yields = []
-    for T in maturities:
-        num_steps = max(1, int(T / dt))
-        # Integrate short rates along the paths up to maturity T
-        integral_rt = rates_df.iloc[:num_steps].sum(axis=0) * dt
-        # Zero-coupon bond price: average over paths
-        price = np.exp(-integral_rt).mean()
-        # Annualized yield: y(T) = -ln(P(T)) / T
-        yields.append(-np.log(price) / T)
-    
-    # Plot the yield curve
     plt.figure(figsize=(8, 5))
-    plt.plot(maturities, yields, marker='o', label="Optimized CIR Yield Curve")
+    plt.plot(bond_prices_df.index, bond_prices_df['Bond Price'], marker='o',
+             label=f"a={a:.5f}, b={b:.5f}, σ={sigma:.5f}")
+    plt.title("Zero-Coupon Bond Prices for Given a, b, σ")
     plt.xlabel("Maturity (Years)")
-    plt.ylabel("Yield (Annualized)")
-    plt.title(f"CIR Model Yield Curve for a={a:.5f} b={b:.5f} sigma={sigma:.5f}")
+    plt.ylabel("Zero-Coupon Bond Price")
     plt.legend()
     plt.grid(True)
     plt.show()
 
-plot_optimized_cir_rate_curve(a_opt, b_opt, sigma_opt, r0, dt, num_paths, T_max=5)
+
+plot_zero_coupon_bond_prices_for_params(a=a_opt, b=b_opt, sigma=sigma_opt, r0=r0)
