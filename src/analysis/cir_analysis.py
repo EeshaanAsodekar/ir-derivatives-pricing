@@ -48,7 +48,7 @@ def analyze_parameter_sensitivity():
                 empirical_variance = np.var(final_rates)
 
                 # Theoretical expectation and variance
-                theoretical_variance = sigma**2 / (2 * a)
+                theoretical_variance = (sigma**2)*b/(2*a)
 
                 # Store results
                 results.append({
