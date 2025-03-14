@@ -205,33 +205,117 @@ plt.show()
 
 
 
-def plot_zero_coupon_bond_prices_for_params(a, b, sigma, r0=0.05, T=5, dt=0.01, 
+def plot_zero_coupon_bond_prices_for_params(a, b, sigma,
+                                            market_bond_prices,  # e.g., {"1M": 0.9957, "3M": 0.9873, ...}
+                                            maturity_map,        # e.g., {"1M": 1/12, "3M": 3/12, ...}
+                                            r0=0.05, T=5, dt=0.01, 
                                             num_paths=10000, max_maturity=5):
     """
-    Plots zero-coupon bond prices for a single (a, b, sigma) parameter set.
+    Plots zero-coupon bond prices at each monthly maturity (1M, 2M, ..., up to max_maturity*12M)
+    for the given (a, b, sigma). Also overlays market bond prices (with thicker markers).
 
     Args:
         a (float): Speed of mean reversion.
         b (float): Long-run mean interest rate.
         sigma (float): Volatility.
+        market_bond_prices (dict): Market bond prices, e.g. {"1M": 0.9957, "3M": 0.9873, ...}.
+        maturity_map (dict): Mapping for each market maturity to a year fraction, 
+                             e.g. {"1M": 1/12, "3M": 3/12, "6M": 6/12, "1Y":1.0, ...}.
         r0 (float): Initial short rate.
-        T (float): Total simulation time in years.
+        T (float): Total simulation time in years (must be >= max_maturity).
         dt (float): Time step size.
         num_paths (int): Number of simulation paths.
-        max_maturity (int): Maximum bond maturity in years.
+        max_maturity (int): Maximum bond maturity in years (integer).
     """
-    bond_prices_df = compute_zero_coupon_bond_prices(a, b, sigma, r0, T, dt, 
-                                                     num_paths, max_maturity)
-    
+    # --------------------------------------------------------------------------
+    # 1. Simulate CIR paths once, up to at least `T` = max_maturity (in years).
+    # --------------------------------------------------------------------------
+    rates_df = simulate_cir(a, b, sigma, r0, T, dt, num_paths)
+
+    # --------------------------------------------------------------------------
+    # 2. Compute a model-based bond price for each monthly maturity
+    #    from 1M out to (max_maturity * 12)M.
+    # --------------------------------------------------------------------------
+    monthly_maturities = np.arange(1, max_maturity * 12 + 1) / 12.0  # [1/12, 2/12, ..., 5 for max_maturity=5]
+    bond_prices = {}
+    for maturity in monthly_maturities:
+        num_steps = int(maturity / dt)
+        # Integrate rates up to 'maturity'
+        integral_rt = rates_df.iloc[:num_steps].sum(axis=0) * dt
+        # Bond price = E[e^(-∫r_t dt)]
+        bond_prices[maturity] = np.exp(-integral_rt).mean()
+
+    # Convert to a DataFrame sorted by maturity
+    bond_prices_df = pd.DataFrame.from_dict(bond_prices, orient='index', columns=['Bond Price'])
+    bond_prices_df.sort_index(inplace=True)
+
+    # --------------------------------------------------------------------------
+    # 3. Extract the market bond prices for plotting (with bigger/thicker markers).
+    # --------------------------------------------------------------------------
+    # Example usage of the provided 'maturity_map':
+    #    "1M" -> 1/12, "3M" -> 3/12, etc.
+    x_market = [maturity_map[m] for m in market_bond_prices.keys()]
+    y_market = list(market_bond_prices.values())
+
+    # --------------------------------------------------------------------------
+    # 4. Plot the results
+    # --------------------------------------------------------------------------
     plt.figure(figsize=(8, 5))
-    plt.plot(bond_prices_df.index, bond_prices_df['Bond Price'], marker='o',
-             label=f"a={a:.5f}, b={b:.5f}, σ={sigma:.5f}")
-    plt.title("Zero-Coupon Bond Prices for Given a, b, σ")
+
+    # (a) Model-based monthly curve (connected line with small markers).
+    plt.plot(
+        bond_prices_df.index,
+        bond_prices_df['Bond Price'],
+        linestyle='-',
+        linewidth=1.75,
+        label=f"Model: a={a:.5f}, b={b:.5f}, σ={sigma:.5f}"
+    )
+
+    # (b) Overlay the market bond prices with bigger markers & thicker edges.
+    plt.scatter(
+        x_market, y_market,
+        s=120,            # marker size
+        linewidths=2,     # edge/border width
+        edgecolors='black',
+        color='red',
+        marker='o',
+        label="Market Prices"
+    )
+
+    # --------------------------------------------------------------------------
+    # 5. Finalize the plot
+    # --------------------------------------------------------------------------
+    plt.title("Zero-Coupon Bond Prices: Monthly Model Curve vs. Market")
     plt.xlabel("Maturity (Years)")
     plt.ylabel("Zero-Coupon Bond Price")
-    plt.legend()
     plt.grid(True)
+    plt.legend()
     plt.show()
 
+# 5 year curve
+plot_zero_coupon_bond_prices_for_params(
+    a=a_opt, 
+    b=b_opt, 
+    sigma=sigma_opt,
+    market_bond_prices=market_bond_prices,  # dict like {"1M": 0.9957, "3M": 0.9873, ...}
+    maturity_map=maturity_map,              # dict like {"1M": 1/12, "3M": 3/12, ...}
+    r0=r0,
+    T=5, 
+    dt=0.01, 
+    num_paths=10000,
+    max_maturity=5
+)
 
-plot_zero_coupon_bond_prices_for_params(a=a_opt, b=b_opt, sigma=sigma_opt, r0=r0)
+# 1 year curve
+plot_zero_coupon_bond_prices_for_params(
+    a=a_opt, 
+    b=b_opt, 
+    sigma=sigma_opt,
+    market_bond_prices=market_bond_prices,  # dict like {"1M": 0.9957, "3M": 0.9873, ...}
+    maturity_map=maturity_map,              # dict like {"1M": 1/12, "3M": 3/12, ...}
+    r0=r0,
+    T=1, 
+    dt=0.01, 
+    num_paths=10000,
+    max_maturity=1
+)
