@@ -116,5 +116,35 @@ def plot_zero_coupon_bond_prices():
     plt.show()
 
 
+def plot_zero_coupon_bond_prices_for_params(a, b, sigma, r0=0.05, T=5, dt=0.01, 
+                                            num_paths=10000, max_maturity=5):
+    """
+    Plots zero-coupon bond prices for a single (a, b, sigma) parameter set.
+
+    Args:
+        a (float): Speed of mean reversion.
+        b (float): Long-run mean interest rate.
+        sigma (float): Volatility.
+        r0 (float): Initial short rate.
+        T (float): Total simulation time in years.
+        dt (float): Time step size.
+        num_paths (int): Number of simulation paths.
+        max_maturity (int): Maximum bond maturity in years.
+    """
+    bond_prices_df = compute_zero_coupon_bond_prices(a, b, sigma, r0, T, dt, 
+                                                     num_paths, max_maturity)
+    
+    plt.figure(figsize=(8, 5))
+    plt.plot(bond_prices_df.index, bond_prices_df['Bond Price'], marker='o',
+             label=f"a={a:.5f}, b={b:.5f}, σ={sigma:.5f}")
+    plt.title("Zero-Coupon Bond Prices for Given a, b, σ")
+    plt.xlabel("Maturity (Years)")
+    plt.ylabel("Zero-Coupon Bond Price")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+
 if __name__ == "__main__":
+    plot_zero_coupon_bond_prices_for_params(a=0.05, b=0.04, sigma=0.08, r0=0.05)
     plot_zero_coupon_bond_prices()
