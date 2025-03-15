@@ -20,8 +20,8 @@ def analyze_parameter_sensitivity():
     base_params = {
         "r0": 0.05,   # Initial interest rate
         "T": 50,      # Simulation time (years)
-        "dt": 0.01,   # Time step
-        "num_paths": 10000  # Number of simulation paths
+        "dt": 0.001,   # Time step
+        "num_paths": 1000  # Number of simulation paths
     }
 
     # Vary parameters
@@ -76,7 +76,7 @@ def check_distribution_normality():
     """
     # Parameters
     params = {
-        "a": 0.05, "b": 0.04, "sigma": 0.08, "r0": 0.05, "T": 50, "dt": 0.01, "num_paths": 10000
+        "a": 0.05, "b": 0.04, "sigma": 0.08, "r0": 0.05, "T": 50, "dt": 0.001, "num_paths": 1000
     }
 
     # Run CIR simulation
@@ -143,7 +143,7 @@ def plot_convergence_to_mean():
     Plots the convergence of the simulated mean rate towards the long-run mean (b).
     """
     params = {
-        "a": 0.05, "b": 0.04, "sigma": 0.08, "r0": 0.05, "T": 50, "dt": 0.01, "num_paths": 10000
+        "a": 0.05, "b": 0.04, "sigma": 0.08, "r0": 0.05, "T": 50, "dt": 0.001, "num_paths": 1000
     }
 
     # Run simulation
@@ -170,7 +170,7 @@ def plot_variance_convergence():
     Plots the evolution of variance over time and compares it to theoretical variance.
     """
     params = {
-        "a": 0.05, "b": 0.04, "sigma": 0.08, "r0": 0.05, "T": 50, "dt": 0.01, "num_paths": 10000
+        "a": 0.05, "b": 0.04, "sigma": 0.08, "r0": 0.05, "T": 50, "dt": 0.001, "num_paths": 1000
     }
 
     # Run simulation
