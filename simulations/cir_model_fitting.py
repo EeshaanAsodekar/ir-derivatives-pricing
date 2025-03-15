@@ -140,7 +140,7 @@ result = minimize(
     initial_guess, 
     method="SLSQP", 
     constraints=constraints,
-    options={"maxiter": 500, "ftol": 1e-12}
+    options={"maxiter": 500, "ftol": 1e-6}
 )
 
 # The fitted parameters:
